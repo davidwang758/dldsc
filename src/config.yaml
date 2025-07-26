@@ -1,0 +1,51 @@
+# Configuration for D-LDSC Training
+
+# --- Model Configuration ---
+model:
+  model: "MLP_Borzoi" 
+  features: "/scratch4/davidwang/datasets/ukbb/annotation/all/scores.all.txt"
+
+# --- Training Configuration ---
+training:
+  epochs: 100 
+  learning_rate: 0.001
+  weight_decay: 0.01
+  learning_rate_intercept: 0.01
+  weight_decay_intercept: 0.0
+  dropout_rate: 0.0
+  early_stopping: False
+  patience: 10
+  gradient_clipping: True
+  max_norm: 1.0
+  pin_memory: True
+  shuffle: True
+  num_workers: 4
+  t_max: 100      
+  eta_min: 0.000001
+  train_chr: [1,3,5,7,9,11,13,15,17,19,21]
+  val_chr: [2,4,6,8,10,12,14,16,18,20,22]
+  
+# --- Data Configuration ---
+data:
+  chisq: "/scratch4/davidwang/datasets/ukbb/gwas/BMI.parquet"
+  annotation: "/scratch4/davidwang/datasets/ukbb/annotation/all/scores.meta.tsv"
+  R2: "/scratch4/davidwang/datasets/ukbb/ld_matrix/ukbb.zarr"
+  batch_id: "/scratch4/davidwang/datasets/ukbb/ld_matrix/R2.meta.tsv"
+  index: "/scratch4/davidwang/datasets/ukbb/index/BMI_MAF:0.01_X2:80_INFO:0.6_SQ.idx"
+  disk_cache: "/scratch4/davidwang/datasets/ukbb/ld_matrix/BMI_MAF:0.01_X2:80_INFO:0.6_SQ"
+
+# --- Output ---
+output:
+  run_id: "BMI_MAF:0.01_X2:80_INFO:0.6_SQ_ALL"
+  model: "/scratch4/davidwang/datasets/ukbb/models"
+  logs: "/scratch4/davidwang/datasets/ukbb/models"
+
+# --- Logging ---
+wandb:
+  project: "D-LDSC"
+  entity: "davidwang758-calico"
+  mode: "online" # [online, offline, disabled]
+
+hydra:
+  run:
+    dir: /home/davidwang/code_repos/dldsc/logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
