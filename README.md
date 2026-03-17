@@ -1,10 +1,8 @@
 # Deep LDSC
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python Version](https://img.shields.io/badge/python-3.8+-brightgreen.svg)
 ![PyTorch Version](https://img.shields.io/badge/pytorch-1.10+-orange.svg)
 
-Tools for Deep LDSC training, evaluation, and inference. Currently supports MLP models with LDSC loss.
 
 ---
 

@@ -11,31 +11,16 @@ import sys
 
 META_COLS = ["CHR", "BP", "A1", "A2"]
 
-class GWAS_Dataset_Chr():
-    def __init__(self, gwas_parquet, traits=[]):
-        self.data = {}
-        self.traits = traits
-        self.chr = gwas_parquet.chr.values
-        for i, c in enumerate(gwas_parquet.chr):
-            self.data[str(c)] = pl.scan_parquet(gwas_parquet.parquet.values[i])
-
-    def get_chisq(self, chr):
-        if len(self.traits) > 0:
-            return self.data[chr].select(self.traits).collect().to_numpy()
-        else:
-            return self.data[chr].select(pl.exclude(["SNP", "CHR", "BP", "A1", "A2", "MAF", "INFO"])).collect().to_numpy()
-
 class GWAS_Dataset():
     def __init__(self, gwas_parquet, traits=[]):
         self.data = pl.scan_parquet(gwas_parquet)
         self.traits = traits
-        if len(self.traits) > 0:
-            self.data = self.data.select(self.traits).collect().to_numpy().astype(np.float32)
-        else:
-            self.data = self.data.select(pl.exclude(["SNP", "CHR", "BP", "A1", "A2", "MAF", "INFO"])).collect().to_numpy().astype(np.float32)
 
-    def get_chisq(self, chr):
-        return self.data
+    def get_chisq(self):
+        if len(self.traits) > 0:
+            return self.data.select(self.traits).collect().to_numpy()
+        else:
+            return self.data.select("CHISQ").collect().to_numpy()
 
 class Annotation_Dataset():
     def __init__(self, annot_parquet, features=[]):
@@ -101,9 +86,9 @@ class DLDSC_Dataset(Dataset):
 
         if self.meta is not None:
             # Remove the cur_batch return if this causes problems.
-            return x, y, R2, w, cur_batch, m
+            return x, y, R2, w, m, cur_batch
         else:
-            return x, y, R2, w, cur_batch
+            return x, y, R2, w
 
     def __len__(self):
         return self.n_batch
@@ -112,7 +97,7 @@ class DLDSC_DataLoader:
     def __init__(self, gwas, annotation, R2, batch_id, index, weights = None, shuffle=True, num_workers=0, disk_cache=None, pin_memory=False, meta=False):
         self.traits = gwas.traits
         self.features = annotation.features
-        self.gwas = gwas # CHANGE
+        self.gwas = gwas.get_chisq()
         self.annotation = annotation
         self.R2 = R2
         self.weights = weights
@@ -133,15 +118,13 @@ class DLDSC_DataLoader:
 
         for c in self.chroms:
             batch_id_c = self.batch_id.id.values[self.batch_id.chr == c]
-
             if self.meta:
-                meta_table = self.annotation.get_meta(str(c))
+                dataset = DLDSC_Dataset(self.gwas, self.annotation.get_annot(str(c)), self.R2, batch_id_c, self.index, 
+                                        weights = self.weights, disk_cache = self.disk_cache,
+                                        meta=self.annotation.get_meta(str(c)))
             else:
-                meta_table = None
-
-            dataset = DLDSC_Dataset(self.gwas.get_chisq(str(c)), self.annotation.get_annot(str(c)), self.R2, batch_id_c, self.index, 
-                                    weights = self.weights, disk_cache = self.disk_cache,
-                                    meta=meta_table)
+                dataset = DLDSC_Dataset(self.gwas, self.annotation.get_annot(str(c)), self.R2, batch_id_c, self.index, 
+                                        weights = self.weights, disk_cache = self.disk_cache)
 
             loader = DataLoader(dataset, 
                                 batch_size = 1, # DO NOT CHANGE THIS, CANNOT COLLATE BATCHES
@@ -319,120 +302,6 @@ def build_index(gwas_path, annotation_paths, R2_meta, min_batch_maf, min_ld_maf,
     with open(f"{out_prefix}.idx", 'wb') as f:
         pickle.dump(out, f)
 
-def build_index_chr(gwas_paths, annotation_paths, R2_meta, min_batch_maf, min_ld_maf, max_chisq, min_chisq, min_info, out_prefix, square=False, padding=1000000):
-    if os.path.exists(f"{out_prefix}.idx"):
-        return
-
-    print("Building index.")
-    gwas_meta_cols = META_COLS + ["MAF", "INFO", "index_gwas", "SNP"]
-    #gwas_ss = pd.read_parquet(gwas_path)
-    #gwas_ss["index_gwas"] = np.arange(gwas_ss.shape[0])
-    #target_cols = [col for col in gwas_ss.columns if col not in set(gwas_meta_cols)]
-    #mask = (gwas_ss[target_cols] >= min_chisq).all(axis=1) & (gwas_ss[target_cols] <= max_chisq).all(axis=1) & (~np.isnan(gwas_ss[target_cols])).all(axis=1)
-    #gwas_ss = gwas_ss[mask]
-
-    annot = [pd.read_parquet(a, columns=META_COLS) for a in annotation_paths]
-    gwas = [pd.read_parquet(g, columns=META_COLS + ["MAF", "INFO"]) for g in gwas_paths]
-    merged = {}
-    for a,g in zip(annot, gwas):
-        assert np.all(a.CHR == a.CHR[0]) & np.all(g.CHR == g.CHR[0]), "Not all chromosomes are the same in file."
-        assert a.CHR[0] == g.CHR[0], "Annotation and GWAS chromosomes don't match."
-        chrom = a.CHR[0]
-
-        a["index_annot"] = np.arange(a.shape[0])
-        g["index_gwas"] = np.arange(g.shape[0])
-
-        # Filter GWAS
-        target_cols = [col for col in g.columns if col not in set(gwas_meta_cols)]
-        mask = (g[target_cols] >= min_chisq).all(axis=1) & (g[target_cols] <= max_chisq).all(axis=1) & (~np.isnan(g[target_cols])).all(axis=1)
-        g = g[mask]
-
-        merged[chrom] = a.merge(g, on=META_COLS, how="inner")
-
-    merged_batch = {}
-    merged_ld = {}
-    for c in merged.keys():
-        merged_batch[c] = merged[c].query('MAF >= @min_batch_maf and INFO >= @min_info') 
-        merged_ld[c] = merged[c].query('MAF >= @min_ld_maf') 
-
-    gwas_index = {}
-    annot_index = {}
-    R2_index_row = {}
-    R2_index_col = {}
-
-    R2 = pd.read_csv(R2_meta, sep="\t")
-    for i in range(R2.shape[0]):
-        print(i)
-        snps = pd.read_csv(R2.file[i], sep="\t")
-        snps.columns = ["rsid"] + META_COLS
-        snps["index_ld"] = np.arange(snps.shape[0])
-        start = R2.start[i]
-        end = R2.end[i]
-        q1 = "BP >= @start + @padding & BP < @end - @padding"
-        q2 = "BP >= @start & BP < @end"
-        overlap_batch = snps.query(q1).merge(merged_batch[R2.chr[i]].query(q1), on=META_COLS, how="inner")
-        if square:
-            overlap_ld = overlap_batch
-        else:
-            overlap_ld = snps.merge(merged_ld[R2.chr[i]].query(q2), on=META_COLS, how="inner")
-
-        if (overlap_batch.shape[0] == 0) | (overlap_ld.shape[0] == 0):
-            print(f"Batch {R2.id[i]} is empty after filtering. Skipping indexing this batch.")
-            continue
-
-        gwas_index[R2.id[i]] = overlap_batch.index_gwas.values
-        annot_index[R2.id[i]] = overlap_ld.index_annot.values
-        R2_index_row[R2.id[i]] = overlap_batch.index_ld.values
-        R2_index_col[R2.id[i]] = overlap_ld.index_ld.values
-
-    out = {"gwas": gwas_index, "annotation": annot_index, "R2_row": R2_index_row, "R2_col": R2_index_col}
-    with open(f"{out_prefix}.idx", 'wb') as f:
-        pickle.dump(out, f)
-
-def validate_index_chr(gwas_paths, annotation_paths, R2_meta, index_prefix):
-    print("Validating index.")
-    with open(f"{index_prefix}.idx", "rb") as f:
-        index = pickle.load(f)
-
-    gwas_index = index["gwas"]
-    annotation_index = index["annotation"]
-    R2_row_index = index["R2_row"]
-    R2_col_index = index["R2_col"]
-
-    gwas_ss = {}
-    annot = {}
-    for f1,f2 in zip(annotation_paths, gwas_paths):
-        a = pd.read_parquet(f1, columns=META_COLS)
-        g = pd.read_parquet(f2, columns=META_COLS)
-        assert np.all(a.CHR == a.CHR[0]) & np.all(g.CHR == g.CHR[0]), "Not all chromosomes are the same in file."
-        assert a.CHR[0] == g.CHR[0], "Annotation and GWAS chromosomes don't match."
-        annot[a.CHR[0]] = a
-        gwas_ss[g.CHR[0]] = g
-    R2 = pd.read_csv(R2_meta, sep="\t")
-
-    val = []
-    for i in range(R2.shape[0]):
-        k = R2.id[i]
-        c = R2.chr[i]
-        # Empty keys are not indexed
-        if k in gwas_index.keys():
-            r2 = pd.read_csv(R2.file[i], sep="\t", usecols=["chromosome", "position", "allele1", "allele2"])
-            
-            gwas_i = gwas_ss[c].iloc[gwas_index[k],:]
-            annot_i = annot[c].iloc[annotation_index[k],:]
-            r2_row_i = r2.iloc[R2_row_index[k],:].values
-            r2_col_i = r2.iloc[R2_col_index[k],:].values
-            
-            passed = np.all(gwas_i == r2_row_i) & np.all(annot_i == r2_col_i)
-            val.append(passed)
-            if passed:
-                print(f"Batch ID {k} passed validation.")
-
-    if np.all(val):
-        print("All indices passed.")
-    else:
-        print("Not all indices passed.")
-
 def validate_index(gwas_path, annotation_paths, R2_meta, index_prefix):
     print("Validating index.")
     with open(f"{index_prefix}.idx", "rb") as f:
@@ -529,46 +398,15 @@ if __name__ == '__main__':
     #build_index(gwas_path, annotation_paths, R2_meta, 0.001, 0.001, 1000000, -1000000, 0.6, out_prefix, square=True, padding=0)
     #validate_index(gwas_path, annotation_paths, R2_meta, out_prefix)
 
-    #gwas_path = "/scratch4/davidwang/datasets/ukbb/gwas/xiang_idp20_x2.parquet"
-    #annotation_meta = pd.read_csv("/scratch4/davidwang/datasets/ukbb/annotation/all/scores.meta.tsv", sep="\t")
-    #annotation_paths = annotation_meta.parquet.values
-    #R2_meta = "/scratch4/davidwang/datasets/ukbb/ld_matrix/R2.meta.tsv"
-    #out_prefix = "/scratch4/davidwang/datasets/ukbb/index/XIANGIDP_MAF:0.001_X2:ALL_3LD1VMb"
-    #build_index(gwas_path, annotation_paths, R2_meta, 0.001, 0.001, 1000000, -1000000, 0.6, out_prefix, square=True)
-    #build_index(gwas_path, annotation_paths, R2_meta, 0.001, 0.001, 1000000, -1000000, 0.6, out_prefix, square=False)
-    #validate_index(gwas_path, annotation_paths, R2_meta, out_prefix)
-
-    gwas_meta = pd.read_csv("/scratch4/davidwang/datasets/ukbb/gwas/oxford_idp_11k/ss.meta.tsv", sep="\t")
-    gwas_paths = gwas_meta.parquet.values
+    gwas_path = "/scratch4/davidwang/datasets/ukbb/gwas/xiang_idp20_x2.parquet"
     annotation_meta = pd.read_csv("/scratch4/davidwang/datasets/ukbb/annotation/all/scores.meta.tsv", sep="\t")
     annotation_paths = annotation_meta.parquet.values
     R2_meta = "/scratch4/davidwang/datasets/ukbb/ld_matrix/R2.meta.tsv"
-    #out_prefix = "/scratch4/davidwang/datasets/ukbb/index/OXFORD_11k_MAF:0.01_X2:ALL_SQ"
-    out_prefix = "/scratch4/davidwang/datasets/ukbb/index/OXFORD_11k_MAF:0.01_X2:ALL_3Mb"
-    build_index_chr(gwas_paths, annotation_paths, R2_meta, 0.01, 0.01, 1000000, -1000000, 0.6, out_prefix, square=False)
-    validate_index_chr(gwas_paths, annotation_paths, R2_meta, out_prefix)
+    out_prefix = "/scratch4/davidwang/datasets/ukbb/index/XIANGIDP_MAF:0.001_X2:ALL_3LD1VMb"
+    #build_index(gwas_path, annotation_paths, R2_meta, 0.001, 0.001, 1000000, -1000000, 0.6, out_prefix, square=True)
+    build_index(gwas_path, annotation_paths, R2_meta, 0.001, 0.001, 1000000, -1000000, 0.6, out_prefix, square=False)
+    validate_index(gwas_path, annotation_paths, R2_meta, out_prefix)
     
-    # Test legacy loader.
-    #gwas_meta = "/scratch4/davidwang/datasets/ukbb/gwas/all_traits.parquet"
-    #gwas_data = GWAS_Dataset(gwas_meta)
-    #out_prefix = "/scratch4/davidwang/datasets/ukbb/index/ALL_MAF:0.01_X2:80_INFO:0.6_SQ"
-
-    #gwas_data = GWAS_Dataset_Chr(gwas_meta)
-    #annot_data = Annotation_Dataset(annotation_meta)
-    #ld_mat_data =  zarr.open("/scratch4/davidwang/datasets/ukbb/ld_matrix/ukbb.zarr", mode="r")
-    #batch_id = pd.read_csv(R2_meta, sep="\t")
-    #with open(f"{out_prefix}.idx", "rb") as f:
-    #    index = pickle.load(f)
-    #batch_id = batch_id.loc[[id in index["gwas"].keys() for id in batch_id.id],:]
-    
-    #dataloader = DLDSC_DataLoader(gwas_data, annot_data, ld_mat_data, batch_id, index, weights = None, shuffle=False, num_workers=16, disk_cache=None)
-
-    #for x, y, R2, w in dataloader:
-    #    print(x.shape)
-    #    print(y.shape)
-    #    print(R2.shape)
-    #    print(w.shape)
-
     sys.exit(0)
     # Test dataloader 
     gwas_data = GWAS_Dataset(gwas_path)

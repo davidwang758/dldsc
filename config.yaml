@@ -1,0 +1,73 @@
+# Configuration for D-LDSC Training
+
+mode: ??? # ["Train", "Inference"]
+
+# --- Model Configuration ---
+model:
+  model: ??? # ["MLP_Baseline", "MLP_Borzoi", "ResNet", "Non_Functional"]
+  loss: ??? # ["LDSC", "Susie", "Finemap"]
+  traits: ??? # Trait file.
+  features: ??? # Annotation file.
+
+# --- Training Configuration ---
+training:
+  train_chr: # Training chromosomes. Not needed for inference. For example: [1,3,5,7,9,11,13,15,17,19,21]
+  val_chr: # Validation chromosoems. Not needed for inference. For example: [2,4,6,8,10,12,14,16,18,20,22]
+  epochs: 100 
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  learning_rate_intercept: 0.0001
+  weight_decay_intercept: 0.01
+  dropout_rate: 0.0
+  early_stopping: True
+  patience: 10
+  gradient_clipping: True
+  max_norm: 1.0
+  pin_memory: True
+  shuffle: True
+  num_workers: 4
+  t_max: 100      
+  eta_min: 0.000001
+  sweep: False
+  smart_init: True
+
+finetune: 
+  pretrained_model: # OPTIONAL pretrained model. Leave blank if no model is pretrained.
+  L: 10
+  min_prior_var: 1e-3
+  max_prior_var: 1e-6
+  max_iter: 300
+  coloc: False
+  init_threshold: 0.01
+
+inference:
+  model_list: # Trained model paths tsv file.
+  
+# --- Data Configuration ---
+data:
+  N: ??? # Sample size
+  sum_stat: ??? # Summary statistic parquet file or tsv with parquet paths.
+  annotation: ?? # Annotation parquet file.
+  LD: ??? # LD matrix zarr file.
+  batch_id: ??? # Batch id tsv file.
+  index: ??? # Index file generated through create_index.py script. 
+  disk_cache: ??? # Directory for caching LD matrices as numpy arrays.
+
+# --- Output ---
+output:
+  run_id: ??? # Output name prefix.
+  dir: ??? # Directory to save output.
+
+# --- Logging ---
+wandb:
+  project: # "D-LDSC"
+  entity: # "davidwang758-calico"
+  mode: "disabled" # ["online", "offline", "disabled"]
+
+hydra:
+  run:
+    dir: ??? # Directory to save logs.
+
+resnet:
+  hidden_dim:
+  num_blocks:

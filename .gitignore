@@ -3,5 +3,6 @@ __pycache__
 analysis/
 logs/
 old_code/
-wandb/
-slurm/
+src/wandb/
+src/slurm/
+src/outputs/
