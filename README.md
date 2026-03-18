@@ -20,13 +20,15 @@ A typical D-LDSC workflow invovles:
 
 ## Installation
 
+The installation requires conda.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/davidwang758/dldsc.git
 cd dldsc
 
 # 2. Create and activate a virtual environment 
-conda create -n dldsc
+conda create -n dldsc python=3.13
 source activate dldsc 
 
 # 3. Install the required packages
@@ -122,6 +124,7 @@ hydra:
 
 The following data is mandatory to train a D-LDSC model.
 
+- **Sample Size:** A scalar value for the sample size of the GWAS or QTL study. For large sample size studies, D-LDSC is not sensitive to the exact value. If the exact value is unknown but you know the sample size is large (e.g. UKBB), you can approximate this value with a large number. 
 - **Summary Statistics:** Parquet file with columns ["CHR", "BP", "A1", "A2", "MAF", "INFO", "TRAIT_ID"]. These columns correspond to chromosome, variant position, reference allele, alternate allele, minor allele frequency, imputation quality score, and trait. The number of traits is only limited by memory. For a rough estimate on the limit, we trained D-LDSC on the Big40 Brain IDP dataest from Smith et al. 2021 which included 3935 traits on L4 GPU nodes with 128GB memory. The summary statistics for each trait must be $\chi^2$ for LDSC and z-scores for fine-mapping. The model assumes the individual level phenotypes and genotypes were standardized (mean 0, variance 1). $\chi^2$ is just the squared z-score. Please take care use the correct summary statistics for each task. If they are incorrect (e.g. $\chi^2$ used for fine-mapping), the model will run without error but your results will not make sense! The MAF and INFO score columns are only used for filtering, not model training. If you don't know these values, just set them to 1.0 and all variants will be used. The user can optionally supply a TSV file which contains paths to one parquet file per chromosome instead of a single parquet file. An example of the file schema is in the examples folder. 
 - **Variant Annotations:** Parquet file per chromosome with columns ["CHR", "BP", "A1", "A2", "ANNOT_ID"]. These columns correspond to chromosome, variant position, reference allele, alternate allele, and annotation. The number of annotations is only limited by memory. For a rough estimate on the limit, we trained D-LDSC on ~6500 cell-type specific variant effect scores predicted by the Borzoi model. The annotation set also includes 187 baseline annotations commonly used in S-LDSC which includes measures like conservation, allele frequency, selection, etc. The user must create one parquet file per chromosome and supply a TSV with paths to each parquet file. An example of the file schema is in the examples folder. 
 - **LD Matrices:** LD matricies should be provided as sparse scipy arrays (".npz") and metadata saved as compressed dataframes (".gz"). Each LD matrix is a square matrix that can be accssed by a unique ID (e.g. "chr1_1000001_1300001"). We suggest using 1-3Mb windows. The metadata columns are ["rsid", "chromosome", "position", "allele1", "allele2"]. These files must be processed into a single zarr file which is provided as input to the model. The scripts to perform this file conversion are in the data folder. The user must also supply a TSV file with columns ["chr", "id", "file", "start", "end"]. These columns are chromosome, LD matrix ID, path to sparse scipy array from which the zarr file is generated, window start, window end. During training and inference, each LD matrix is treated as a "batch". Only LD matricies which are in this TSV file will be used. 
@@ -247,6 +250,7 @@ Examples to plot heritability enrichment for binary and continous annotations ar
 
 ## TODO:
 
+- Documentation for data processing scripts.
 - Sweeps for hyperparamter tuning.
 - Co-localization examples.
 - Move trained models and some data to GCP buckets for easier sharing.

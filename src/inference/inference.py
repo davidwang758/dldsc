@@ -82,7 +82,7 @@ def _run_dldsc_inference(cfg, model_list, dataloader_list, criterion, device, lo
             
                 loss_list.append(loss.item())
                 batch_list.append(b)
-                h2 = yhat / cfg.data.N
+                h2 = yhat # This should be divided by the number of variants.
                 h2 = pd.DataFrame(h2.half().detach().cpu().numpy())
                 h2.columns = dataloader.traits
                 m = pd.concat([m, h2], axis=1)

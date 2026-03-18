@@ -70,7 +70,7 @@ def _finetune_dldsc(cfg, model, criterion, train_dataloader, val_dataloader, dev
 
             # Fit posterior to convergence (E step)
             with torch.no_grad(): 
-                mu, s2, alpha = criterion[1](y, R, cfg.data.N, tau2, pi, Eb_init=Eb_init[b], max_iter=cfg.finetune.max_iter, coloc=cfg.finetune.coloc, L=cfg.finetune.L)
+                mu, s2, alpha = criterion[1](y, R, cfg.data.N, tau2, pi, Eb_init=Eb_init[b], max_iter=cfg.finetune.max_iter, coloc=cfg.finetune.coloc, L=cfg.finetune.L, device=device)
                 if cfg.training.smart_init:
                     Eb = (mu * alpha).cpu()
                     l_init, v_init, val = _get_init(Eb, cfg.finetune.init_threshold)
@@ -94,7 +94,7 @@ def _finetune_dldsc(cfg, model, criterion, train_dataloader, val_dataloader, dev
                 pi = model(x)
 
                 with torch.no_grad():
-                    mu, s2, alpha = criterion[1](y, R, cfg.data.N, tau2, pi, Eb_init=Eb_init[b], max_iter=cfg.finetune.max_iter, coloc=cfg.finetune.coloc, L=cfg.finetune.L)
+                    mu, s2, alpha = criterion[1](y, R, cfg.data.N, tau2, pi, Eb_init=Eb_init[b], max_iter=cfg.finetune.max_iter, coloc=cfg.finetune.coloc, L=cfg.finetune.L, device=device)
                     if cfg.training.smart_init:
                             Eb = mu * alpha
                             l_init, v_init, val = _get_init(Eb, cfg.finetune.init_threshold)
