@@ -1,11 +1,11 @@
 # Deep-LDSC
 
-![Python Version](https://img.shields.io/badge/python-3.8+-brightgreen.svg)
-![PyTorch Version](https://img.shields.io/badge/pytorch-1.10+-orange.svg)
+![Python Version](https://img.shields.io/badge/python-3.13+-brightgreen.svg)
+![PyTorch Version](https://img.shields.io/badge/pytorch-2.7+-orange.svg)
 
 Deep-LDSC is a end to end model for multi-trait, genome-wide, functionally informed heritability estimation, fine-mapping, and co-localization using functional variant annotations. It can be trained on biobank scale data with thousands of GWAS traits and cell-type specific annotations derived from variant effect prediction models such as Borzoi. The main tasks our model was design for include:
 
-1. Joint heritability estimation aross multiple traits using functional annotations. 
+1. Joint heritability estimation across multiple traits using functional annotations. 
 2. Functionally informed fine-mapping across multiple complex (GWAS) and molecular (QTL) traits.
 3. Functionally informed co-localization.
 4. Quantifying annotation importance and functional enrichment. 
@@ -168,7 +168,6 @@ python dldsc.py mode='Train' \
                 model.features='examples/scores.baseline.txt' \
                 training.train_chr=[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21] \
                 training.val_chr=[1,22] \
-                training.epochs=2 \
                 finetune.pretrained_model="${out_dir}/example_train.best.pth" \
                 data.N=$N \
                 data.sum_stat=$sum_stat \
@@ -251,8 +250,8 @@ Examples to plot heritability enrichment for binary and continous annotations ar
 ## TODO:
 
 - Documentation for data processing scripts.
-- Sweeps for hyperparamter tuning.
-- Co-localization examples.
+- Documentation for sweeps for hyperparamter tuning.
+- Co-localization examples and documentation. It works but needs more evaluations on our end.
 - Move trained models and some data to GCP buckets for easier sharing.
 
 
