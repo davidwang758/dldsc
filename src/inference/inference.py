@@ -30,6 +30,60 @@ def to_device(x, y, R2, w, device, non_blocking=False):
     w = w.to(device, non_blocking=non_blocking)
     return x, y, R2, w
 
+def get_cs_table(alpha, R, coverage=0.95, ld_threshold=0.99, purity_threshold=0.5):
+    # Compute CS
+    sorted_indicies = torch.argsort(alpha, dim=1, descending=True)
+    sorted_probs = torch.gather(alpha, dim=1, index=sorted_indicies)
+    cum_sums = torch.cumsum(sorted_probs, dim=1)
+    shifted_cum_sums = cum_sums - sorted_probs
+    mask = shifted_cum_sums < coverage
+    cs = mask.nonzero(as_tuple=False)
+    cs[:,1] = sorted_indicies[mask]
+
+    # Filter duplicate CS
+    df = pd.DataFrame(cs.cpu().numpy(), columns=["L","V","T"])
+    grouped = df.groupby(["L","T"])["V"].apply(frozenset).reset_index()
+    grouped = grouped.drop_duplicates(subset=["T","V"])
+
+    # Extend cs by high ld variants and compute purity
+    R_abs = torch.abs(R) 
+    
+    new_cs = []
+    purities = []
+    
+    for i, cs_frozenset in enumerate(grouped.V):
+        curr_indices = torch.tensor(list(cs_frozenset), device=R.device, dtype=torch.long)
+        
+        max_ld_per_variant, _ = torch.max(R_abs[curr_indices, :], dim=0)
+        extended_indices = torch.where(max_ld_per_variant > ld_threshold)[0]
+        
+        sub_R = R_abs[extended_indices][:, extended_indices]
+        purity = torch.min(sub_R).item()
+            
+        new_cs.append(extended_indices.cpu().numpy().tolist())
+        purities.append(purity)
+
+    # Drop low purity cs
+    grouped["V"] = new_cs
+    grouped["purity"] = purities
+    grouped = grouped.loc[grouped["purity"] >= purity_threshold]
+
+    # Reformat for output. 
+    exploded = grouped[['L', 'T', 'V']].explode('V')
+    exploded['cs_id'] = exploded['L'] + 1
+
+    matrix_df = exploded.pivot_table(index='V', 
+                                 columns='T', 
+                                 values='cs_id', 
+                                 aggfunc='last').fillna(0).astype(int)
+    
+    full_idx = np.arange(alpha.shape[1])
+    full_cols = np.arange(alpha.shape[2])
+    
+    matrix_df = matrix_df.reindex(index=full_idx, columns=full_cols, fill_value=0)
+
+    return(matrix_df)
+
 def _run_finemapping_inference(cfg, model_list, dataloader_list, criterion, device, log):
     tau2 = torch.linspace(cfg.finetune.max_prior_var,cfg.finetune.min_prior_var,cfg.finetune.L, device=device)
     loss_list = []
@@ -48,6 +102,10 @@ def _run_finemapping_inference(cfg, model_list, dataloader_list, criterion, devi
                 # Fit posterior to convergence (E step)
                 mu, s2, alpha = criterion[1](y, R, cfg.data.N, tau2, pi, max_iter=cfg.finetune.max_iter, device=device, L=cfg.finetune.L)
                 loss, _, _, _ = criterion[0](y, R, cfg.data.N, mu, s2, tau2, alpha, pi)
+
+                # Get credible sets
+                cs_table = get_cs_table(alpha, R)
+                cs_table.columns = dataloader.traits + "_CS"
             
                 loss_list.append(loss.item())
                 batch_list.append(b)
@@ -59,7 +117,7 @@ def _run_finemapping_inference(cfg, model_list, dataloader_list, criterion, devi
                 post_mu.columns = dataloader.traits + "_mu"
                 prior = pd.DataFrame(pi.half().detach().cpu().numpy())
                 prior.columns = dataloader.traits + "_prior"
-                m = pd.concat([m, pip, post_mu, prior], axis=1)
+                m = pd.concat([m, pip, cs_table, post_mu, prior], axis=1)
                 m.to_parquet(f"{cfg.output.dir}/{b}.parquet", engine='pyarrow', index=False)
 
             loss_df = pd.DataFrame({"Batch": batch_list, "Loss": loss_list})

@@ -1,251 +1,171 @@
 import pandas as pd
-import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
-import matplotlib.colors as mcolors
+import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.colors as mcolors
+from scipy.stats import norm, chi2
 
-def plot_zscore_ld(zscores, ld, threshold, use_chisq=False, legend_loc="upper_right"):
-    # Process inputs to match original dataframe structure
-    if use_chisq:
-        y_vals = zscores.cpu().detach().numpy()**2
-        threshold = threshold**2
+def plot_manhattan(sum_stats, ld=None, mode="zscore", p_cutoff=5e-8, legend_loc="upper right"):
+    if mode == "zscore":
+        y_vals = sum_stats
+        threshold = norm.ppf(1 - p_cutoff / 2)
+        y_label = "z-score"
+    elif mode == "chisq":
+        y_vals = sum_stats**2
+        threshold = chi2.ppf(1 - p_cutoff, df=1)
+        y_label = r'$\chi^2$'
+    elif mode == "pval":
+        p_vals = 2 * norm.sf(np.abs(sum_stats))
+        y_vals = -np.log10(np.clip(p_vals, 1e-300, 1))
+        threshold = -np.log10(p_cutoff)
+        y_label = r'$-\log_{10}(p)$'
     else:
-        y_vals = zscores.cpu().detach().numpy()
-        
-    ld_vals = np.array(ld)
-    df = pd.DataFrame({'x': np.arange(len(zscores)), 'y': y_vals, 'ld': ld_vals})
+        raise ValueError("mode must be 'zscore', 'chisq', or 'pval'")
 
-    # Create a conditional column for easier plotting (original logic)
-    df['group'] = np.where(df['y'].abs() > threshold, 'y > threshold', 'y <= threshold')
+    df = pd.DataFrame({'x': np.arange(len(y_vals)), 'y': y_vals})
+    
+    if ld is not None:
+        df['ld'] = np.abs(np.array(ld))
 
-    # Create a separate DataFrame for only the points we want to circle
-    df_highlight = df[df['group'] == 'y > threshold']
+    df['group'] = np.where(np.abs(df['y']) > threshold, 'y > threshold', 'y <= threshold')
 
-    # --- Setup Categorical Coloring ---
-    # 5 High-contrast colors
     colors = ['#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#e41a1c']
     cmap = mcolors.ListedColormap(colors)
-    # Define 5 bins between 0 and 1
     bounds = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    norm = mcolors.BoundaryNorm(bounds, cmap.N)
+    mnorm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    # Original figure size
     plt.figure(figsize=(6, 3))
     ax = plt.gca()
 
-    # Main scatter plot (using plt.scatter for colorbar compatibility)
-    sc = ax.scatter(
+    if ld is not None:
+        sc = ax.scatter(
+            df['x'], df['y'], c=df['ld'], 
+            cmap=cmap, norm=mnorm, edgecolor='none', s=20
+        )
+        axins = inset_axes(ax, width="30%", height="8%", loc=legend_loc, borderpad=1)
+        cbar = plt.colorbar(sc, cax=axins, orientation='horizontal', ticks=bounds)
+        cbar.ax.set_xticklabels(['0', '0.2', '0.4', '0.6', '0.8', '1.0'])    
+        cbar.ax.tick_params(labelsize=7)
+        plt.sca(ax) 
+    else:
+        sns.scatterplot(
+            data=df, x='x', y='y', hue='group', 
+            palette={'y <= threshold': 'blue', 'y > threshold': 'red'}, 
+            legend=False, ax=ax, s=20, edgecolor='none'
+        )
+
+    plt.axhline(y=threshold, color='black', linestyle='--', linewidth=1)
+    if mode == "zscore":
+        plt.axhline(y=-threshold, color='black', linestyle='--', linewidth=1)
+
+    plt.xlabel('Variant')
+    plt.ylabel(y_label)
+
+def plot_pip(pip, cs=None, priors=None, show_labels=False):
+    df = pd.DataFrame({'x': np.arange(len(pip)), 'y': pip})
+    df['cs_id'] = cs.astype(int) if cs is not None else np.zeros(len(pip), dtype=int)
+    
+    unique_cs = np.unique(df.loc[df['cs_id'] > 0, 'cs_id'])
+    cs_colors = sns.color_palette("Dark2", len(unique_cs))
+    cs_palette = {int(cid): cs_colors[i] for i, cid in enumerate(unique_cs)}
+
+    plt.figure(figsize=(6, 3))
+    ax = plt.gca()
+
+    if priors is not None:
+        sc = ax.scatter(
+            df['x'], df['y'], 
+            c=priors, cmap='RdBu_r', 
+            edgecolor='none', s=20
+        )
+        
+        axins = inset_axes(ax,
+                           width="3%",  
+                           height="100%",
+                           loc='lower left',
+                           bbox_to_anchor=(1.02, 0., 1, 1),
+                           bbox_transform=ax.transAxes,
+                           borderpad=0)
+        
+        cbar = plt.colorbar(sc, cax=axins)
+        cbar.ax.tick_params(labelsize=7)
+    else:
+        ax.scatter(
+            df['x'], df['y'], 
+            color='black', edgecolor='none', s=20
+        )
+
+    df_highlight = df[df['cs_id'] > 0]
+    if not df_highlight.empty:
+        ax.scatter(
+            df_highlight['x'],
+            df_highlight['y'],
+            s=150,
+            facecolors='none',
+            edgecolors=[cs_palette[cid] for cid in df_highlight['cs_id']],
+            linewidth=1.5
+        )
+
+    if show_labels:
+        for index, row in df_highlight.iterrows():
+            ax.text(
+                row['x'] + 0.5,  
+                row['y'],        
+                int(row['x']),   
+                horizontalalignment='left',
+                size='small',
+                color='black'
+            )
+
+    ax.set_xlabel('Variant')
+    ax.set_ylabel('PIP')
+
+def plot_priors(priors, index=None, show_labels=False):
+    df = pd.DataFrame({'x': np.arange(len(priors)), 'y': priors})
+    
+    if index is not None:
+        idx_list = np.atleast_1d(index)
+        df['is_highlight'] = np.isin(df['x'], idx_list)
+    else:
+        df['is_highlight'] = False
+
+    df_highlight = df[df['is_highlight']]
+
+    cs_colors = sns.color_palette("Dark2", 1)
+    highlight_color = cs_colors[0]
+
+    plt.figure(figsize=(6, 3))
+    ax = plt.gca()
+
+    ax.scatter(
         df['x'], 
         df['y'], 
-        c=df['ld'], 
-        cmap=cmap, 
-        norm=norm, 
-        edgecolor='none',
-        s=20 # Default seaborn size equivalent
+        color='black', 
+        edgecolor='none', 
+        s=20
     )
 
-    # On the same axes, plot the "circles" around the highlighted points (Original Specs)
-    sns.scatterplot(
-        data=df_highlight,
-        x='x',
-        y='y',
-        ax=ax,
-        s=150,             # Original size
-        facecolors='none',   # Original fill
-        edgecolor='red',     # Original color
-        linewidth=1.5,
-        legend=False
-    )
-
-    # Original text labeling logic
-    for index, row in df_highlight.iterrows():
-        ax.text(
-            row['x'] + 0.5,  # X-coordinate for the text (slight offset)
-            row['y'],        # Y-coordinate for the text
-            int(row['x']),   # The text to display (the x-value)
-            horizontalalignment='left',
-            size='small',
-            color='black'
+    if not df_highlight.empty:
+        ax.scatter(
+            df_highlight['x'],
+            df_highlight['y'],
+            s=150,
+            facecolors='none',
+            edgecolors=highlight_color,
+            linewidth=1.5
         )
 
-    # --- Categorical Colorbar in Top Right ---
-    axins = inset_axes(ax, width="30%", height="8%", loc=legend_loc, borderpad=1)
-    # Ticks centered in the bins [0.1, 0.3, 0.5, 0.7, 0.9]
-    cbar = plt.colorbar(
-        sc, 
-        cax=axins, 
-        orientation='horizontal', 
-        ticks=bounds
-    )
-    cbar.ax.set_xticklabels(['0', '0.2', '0.4', '0.6', '0.8', '1.0'])    
-    cbar.ax.tick_params(labelsize=7)
+    if show_labels and not df_highlight.empty:
+        for _, row in df_highlight.iterrows():
+            ax.text(
+                row['x'] + 0.5,  
+                row['y'],        
+                int(row['x']),  
+                horizontalalignment='left',
+                size='small',
+                color='black'
+            )
 
-    # --- Original Final Touches ---
-    plt.sca(ax) # Switch back to main axis for labels
     plt.xlabel('Variant')
-    if use_chisq:
-        plt.ylabel(r'$\chi^2$')
-    else:
-        plt.ylabel("z-score")
-def plot_priors(priors, index):
-    df = pd.DataFrame({'x': np.arange(len(priors)), 'y': priors.cpu().detach().numpy()})
-
-    # Create a conditional column for easier plotting
-    df['group'] = np.where(np.isin(np.arange(len(priors)), index), 'y > 0.5', 'y <= 0.5')
-
-    # Create a separate DataFrame for only the points we want to circle
-    df_highlight = df[df['group'] == 'y > 0.5']
-
-    plt.figure(figsize=(6, 3))
-    ax = sns.scatterplot(
-        data=df,
-        x='x',
-        y='y',
-        hue='group',
-        palette={'y <= 0.5': 'blue', 'y > 0.5': 'red'},
-        legend=False
-    )
-
-    # On the same axes, plot the "circles" around the highlighted points
-    sns.scatterplot(
-        data=df_highlight,
-        x='x',
-        y='y',
-        ax=ax,
-        s=150,             # Make the marker size larger
-        facecolors='none',   # Make the fill transparent
-        edgecolor='red',     # Set the circle outline color
-        linewidth=1.5,
-        legend=False
-    )
-
-    for index, row in df_highlight.iterrows():
-        ax.text(
-            row['x'] + 0.5,  # X-coordinate for the text (slight offset)
-            row['y'],        # Y-coordinate for the text
-            int(row['x']),   # The text to display (the x-value)
-            horizontalalignment='left',
-            size='small',
-            color='black'
-        )
-
-    # --- 4. Final Touches ---
-    plt.xlabel('Variant')
-    plt.ylabel('PIP')
-    plt.ylim(0,1.1)
-
-
-def plot_zscore(zscores, threshold):
-    df = pd.DataFrame({'x': np.arange(len(zscores)), 'y': zscores.cpu().detach().numpy()})
-
-    # Create a conditional column for easier plotting
-    df['group'] = np.where(df['y'].abs() > threshold, 'y > threshold', 'y <= threshold')
-
-    # Create a separate DataFrame for only the points we want to circle
-    df_highlight = df[df['group'] == 'y > threshold']
-
-    plt.figure(figsize=(6, 3))
-    ax = sns.scatterplot(
-        data=df,
-        x='x',
-        y='y',
-        hue='group',
-        palette={'y <= threshold': 'blue', 'y > threshold': 'red'},
-        legend=False
-    )
-
-    # On the same axes, plot the "circles" around the highlighted points
-    sns.scatterplot(
-        data=df_highlight,
-        x='x',
-        y='y',
-        ax=ax,
-        s=150,             # Make the marker size larger
-        facecolors='none',   # Make the fill transparent
-        edgecolor='red',     # Set the circle outline color
-        linewidth=1.5,
-        legend=False
-    )
-
-    for index, row in df_highlight.iterrows():
-        ax.text(
-            row['x'] + 0.5,  # X-coordinate for the text (slight offset)
-            row['y'],        # Y-coordinate for the text
-            int(row['x']),   # The text to display (the x-value)
-            horizontalalignment='left',
-            size='small',
-            color='black'
-        )
-
-    # --- 4. Final Touches ---
-    plt.xlabel('Variant')
-    plt.ylabel('z-score')
-
-def plot_finemapping(pip):
-    df = pd.DataFrame({'x': np.arange(len(pip)), 'y': pip.cpu().detach().numpy()})
-
-    # Create a conditional column for easier plotting
-    df['group'] = np.where(df['y'] > 0.5, 'y > 0.5', 'y <= 0.5')
-
-    # Create a separate DataFrame for only the points we want to circle
-    df_highlight = df[df['group'] == 'y > 0.5']
-
-    plt.figure(figsize=(6, 3))
-    ax = sns.scatterplot(
-        data=df,
-        x='x',
-        y='y',
-        hue='group',
-        palette={'y <= 0.5': 'blue', 'y > 0.5': 'red'},
-        legend=False
-    )
-
-    # On the same axes, plot the "circles" around the highlighted points
-    sns.scatterplot(
-        data=df_highlight,
-        x='x',
-        y='y',
-        ax=ax,
-        s=150,             # Make the marker size larger
-        facecolors='none',   # Make the fill transparent
-        edgecolor='red',     # Set the circle outline color
-        linewidth=1.5,
-        legend=False
-    )
-
-    for index, row in df_highlight.iterrows():
-        ax.text(
-            row['x'] + 0.5,  # X-coordinate for the text (slight offset)
-            row['y'],        # Y-coordinate for the text
-            int(row['x']),   # The text to display (the x-value)
-            horizontalalignment='left',
-            size='small',
-            color='black'
-        )
-
-    # --- 4. Final Touches ---
-    plt.xlabel('Variant')
-    plt.ylabel('PIP')
-    #plt.ylim(0,1.1)
-
-def plot_ld_score(pip, ld_score): 
-    pip = pip.cpu().detach().numpy()
-    ld_score = ld_score.cpu().detach().numpy()
-    percentiles = stats.rankdata(ld_score) / len(ld_score)
-
-    fig, ax = plt.subplots(figsize=(6, 3))
-    x = np.arange(len(pip))
-    scatter = ax.scatter(x, pip, c=percentiles, cmap='viridis', vmin=0, vmax=1, alpha=0.8)
-    for i in range(len(x)):
-        if pip[i] > 0.5:
-            label = f"{percentiles[i]:.2f}"
-            ax.text(x[i] + 0.01, pip[i] + 0.01, label, fontsize=8, alpha=0.7)
-        
-    cbar = fig.colorbar(scatter, ax=ax)
-    cbar.set_label("LD Score Percentile", rotation=270, labelpad=15)
-
-    # --- 4. Add Labels, Title, and Grid ---
-    ax.set_xlabel("Variant")
-    ax.set_ylabel("PIP")
+    plt.ylabel('Prior Probability')
