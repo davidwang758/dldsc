@@ -54,6 +54,21 @@ class Annotation_Dataset():
     def get_meta(self, chr):
         return self.data[chr].select(["SNP", "CHR", "BP", "A1", "A2"]).collect().to_pandas()
     
+class _Annotation_Dataset(Dataset):
+    def __init__(self, annotation, batch_id, index):
+        self.annotation = annotation
+        self.index = index
+        self.batch_id = batch_id
+        self.n_batch = len(batch_id)
+
+    def __getitem__(self, idx): 
+        cur_batch = self.batch_id[idx]
+        x = torch.from_numpy(self.annotation[self.index[cur_batch],])
+        return x
+    
+    def __len__(self):
+        return self.n_batch
+    
 class DLDSC_Dataset(Dataset):
     def __init__(self, chisq, annotation, R2, batch_id, index, weights=None, disk_cache=None, meta=None):
         self.chisq = chisq
@@ -108,6 +123,37 @@ class DLDSC_Dataset(Dataset):
     def __len__(self):
         return self.n_batch
 
+class Annot_DataLoader:
+    def __init__(self, annotation, batch_id, index, shuffle=True, num_workers=0, pin_memory=False):
+        self.annotation = annotation
+        self.features = annotation.features
+
+        self.batch_id = batch_id
+        self.index = index["annotation"]
+
+        self.num_workers = num_workers
+        self.shuffle = shuffle
+        self.pin_memory = pin_memory
+        self.chroms = batch_id.chr.unique()
+    
+    def __iter__(self):
+        if self.shuffle:
+            np.random.shuffle(self.chroms)
+
+        for c in self.chroms:
+            batch_id_c = self.batch_id.id.values[self.batch_id.chr == c]
+
+            dataset = _Annotation_Dataset(self.annotation.get_annot(str(c)), batch_id_c, self.index)
+
+            loader = DataLoader(dataset, 
+                                batch_size = 1, # DO NOT CHANGE THIS, CANNOT COLLATE BATCHES
+                                shuffle = self.shuffle,
+                                num_workers = self.num_workers,
+                                pin_memory=self.pin_memory,
+                                collate_fn = lambda batch: batch[0])
+            
+            yield from loader
+    
 class DLDSC_DataLoader:
     def __init__(self, gwas, annotation, R2, batch_id, index, weights = None, shuffle=True, num_workers=0, disk_cache=None, pin_memory=False, meta=False):
         self.traits = gwas.traits

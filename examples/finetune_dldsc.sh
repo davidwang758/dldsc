@@ -9,6 +9,9 @@ sum_stat='/scratch4/davidwang/datasets/ukbb/gwas/all_traits_z_scores.parquet'
 annotation='/scratch4/davidwang/datasets/ukbb/annotation/all/scores.meta.tsv'
 LD='/scratch4/davidwang/datasets/ukbb/ld_matrix/ukbb_zscores.zarr'
 batch_id='/scratch4/davidwang/datasets/ukbb/ld_matrix/LD_example.meta.tsv'
+# To train on the full dataset use:
+# batch_id='/scratch4/davidwang/datasets/ukbb/ld_matrix/LD.meta.tsv'
+# Remember to change "epochs" to a larger value.
 index='/scratch4/davidwang/datasets/ukbb/index/ALL_MAF:0.01_Z:80_INFO:0.6_SQ.idx'
 disk_cache="${out_dir}/ALL_MAF:0.01_Z:80_INFO:0.6_SQ"
 

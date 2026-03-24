@@ -42,6 +42,7 @@ finetune:
 
 inference:
   model_list: # Trained model paths tsv file.
+  n_quantile: 5
   
 # --- Data Configuration ---
 data:

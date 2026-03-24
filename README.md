@@ -56,7 +56,7 @@ mode: # <REQUIRED> ["Train", "Inference"]: Whether to run the model in training 
 model:
   model: # <REQUIRED> ["MLP_Baseline", "MLP_Borzoi", "ResNet", "Non_Functional"]: Model for preddiction tasks from annotation.
   loss: # <REQUIRED> ["LDSC", "Susie", "Finemap"]: Loss for heritiability (LDSC) or fine-mapping tasks (Susie/Finemap).
-  traits: # <REQUIRED>: Trait file containing the trait IDs the model will be trained on.
+  traits: # <REQUIRED>: Trait file containing the trait IDs the model will be trained on. The second column is whether the trait is binary (1) or continuous (0).
   features: # <REQUIRED>: Annotation file containing the annotation IDs the model will be trained on.
 
 # --- Training Configuration ---
@@ -92,6 +92,7 @@ finetune:
 
 inference:
   model_list: # Trained model paths tsv file. See examples for schema.
+  n_quantile: 5 # Number of quantiles for continous annotation heritability enrichment.
   
 # --- Data Configuration ---
 data:
@@ -227,7 +228,7 @@ python dldsc.py mode='Inference' \
 Alternatively, you can also do non-functional fine-mapping. Simply set "MLP_Baseline" to "Non_Functional". The list of trained models "model_list" is NOT required for non-functional fine-mapping. Under the hood, this essentially does 1 forward pass of the model with uniform priors. 
 
 Notes:
-- The outputs of non-functional fine-mapping should be near identical to susie_rss. D-LDSC does NOT fit the residual and prior variances of the SuSiE model. Instead, the residual variance is fixed at 1.0. The prior variances for each single effect component is set to the a value chosen unifromly from a grid on the range [min_prior_var, max_prior_var]. Fitting these parameters is very expensive, but SuSiE is not sensitive to the precise values for these parameters. They just need to be within a reasonable range. The default values we provide are sufficient for UKBB traits. If you dataset has very, very, very large effect variants (a single variant explains > 5% heritability or the effect size is extremely large such that prior variance is > 0.01), you might notice small, often negligible, shifts in PIPs compared to susise_rss.   
+- The outputs of non-functional fine-mapping should be near identical to susie_rss. D-LDSC does NOT fit the residual and prior variances of the SuSiE model. Instead, the residual variance is fixed at 1.0. The prior variances for each single effect component is set to the a value chosen unifromly from a grid on the range [min_prior_var, max_prior_var]. Fitting these parameters is very expensive, but SuSiE is not sensitive to the precise values of these parameters. They just need to be within a reasonable range. The default values we provide are sufficient for UKBB traits. If you dataset has very, very, very large effect variants (a single variant explains > 5% heritability or the effect size is extremely large such that prior variance is >> 0.01), you might notice small, often negligible, shifts in PIPs compared to susise_rss.   
 
 ---
 
@@ -235,21 +236,23 @@ Notes:
 
 - Running D-LDSC in "Training" mode will output 2 model weight files. They are "run_id.best.pth" and "run_id.final.pth". Best corresponds to the model weights at the epoch with the lowest validation loss. Final corresponds to the model weights after the last epoch.
 
-- Running D-LDSC in "Inference" mode will output 1 parquet file per "batch" which corresponds to a window defined by a LD matrix. It will also output a "loss.tsv" file which records the model loss for each batch. If the loss is "LDSC", the model will perform heritabliity inference. Each column will be a trait containing per-SNP heritability estimates. The total heritability of the trait is the sum of the per-SNP heritabilities. If the loss is "Susie", the model will perform fine-mapping. Each column will be a trait with suffix "_PIP", "_mu", and "_prior" and "_CS" containing PIP, posterior effect size, prior causal proability, and credible set. 
+- Running D-LDSC in "Inference" mode with the "LDSC" loss will output 3 tsv files: h2.tsv contains the heritability for each trait. binary_enrichment.tsv contains the heritability enrichment for binary annotations. continuous_enrichment.tsv contains the heritability enrichment for continous annotations by binarizing them into a user specified number of quantiles (default: 5). When using the baseline annotation set "_lowfreq" and "_common" suffix annotations are combined (they are mututally exclusive).
+
+- Running D-LDSC in "Inference" mode with any fine-mapping loss mode will output 1 parquet file per "batch" which corresponds to a window defined by a LD matrix. It will also output a "loss.tsv" file which records the model loss for each batch. If the loss is "LDSC", the model will perform heritabliity inference. Each column will be a trait containing per-SNP heritability estimates. The total heritability of the trait is the sum of the per-SNP heritabilities. If the loss is "Susie", the model will perform fine-mapping. Each column will be a trait with suffix "_PIP", "_mu", and "_prior" and "_CS" containing PIP, posterior effect size, prior causal proability, and credible set. 
 
 ### Analysis
 
 1. Fine-mapping + DeepSHAP.
 
-Examples to plot fine-mapping results and interpret variants using DeepSHAP are in notebooks in the example folder.
+Examples to plot fine-mapping results and interpret variants using DeepSHAP are in the notebook examples/vignettes/DeepSHAP.ipynb.
 
 2. Heritability + functional enrichment. 
 
-Examples to plot heritability enrichment for binary and continous annotations are in notebooks in the examples folder.
+Examples to plot heritability enrichment for binary and continous annotations are in the notebook examples/vignettes/h2_Enrichment.ipynb.
 
 ## TODO:
 
-- Documentation for data processing scripts.
+- Documentation for data processing and indexing scripts.
 - Documentation for sweeps for hyperparamter tuning.
 - Co-localization examples and documentation. It works but needs more evaluations on our end.
 - Move trained models and some data to GCP buckets for easier sharing.

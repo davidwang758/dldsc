@@ -8,10 +8,11 @@ N=337000
 sum_stat='/scratch4/davidwang/datasets/ukbb/gwas/all_traits.parquet'
 annotation='/scratch4/davidwang/datasets/ukbb/annotation/all/scores.meta.tsv'
 LD='/scratch4/davidwang/datasets/ukbb/ld_matrix/ukbb.zarr'
-batch_id='/scratch4/davidwang/datasets/ukbb/ld_matrix/LD_example.meta.tsv'
+batch_id='/scratch4/davidwang/datasets/ukbb/ld_matrix/LD.meta.tsv'
 index='/scratch4/davidwang/datasets/ukbb/index/ALL_MAF:0.01_X2:80_INFO:0.6_SQ.idx'
 disk_cache="${out_dir}/ALL_MAF:0.01_X2:80_INFO:0.6_SQ"
-model_list="/scratch4/davidwang/datasets/ukbb/models/ALL_MAF:0.01_X2:80_INFO:0.6_SQ_BASELINE_LR:1e-4.tsv"
+# Use 1 model for the entire dataset (no train/val split).
+model_list="/scratch4/davidwang/datasets/ukbb/models/ALL_MAF:0.01_X2:80_INFO:0.6_SQ_BASELINE_LR:1e-4.h2.tsv"
 
 cd ..
 
