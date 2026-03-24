@@ -137,7 +137,7 @@ The following data is mandatory to train a D-LDSC model.
 
 ### Training
 
-Example D-LDSC training script. Set variables to input paths.
+Example D-LDSC training script. Set variables to input paths. Look at examples/train_dldsc.sh for example data on cb2.
 
 ```bash
 python dldsc.py mode='Train' \
@@ -159,7 +159,7 @@ python dldsc.py mode='Train' \
                 hydra.run.dir="${out_dir}/logs/\${now:%Y-%m-%d}/\${now:%H-%M-%S}"
 ```
 
-Example D-LDSC fine-tuning script. Set variables to input paths.
+Example D-LDSC fine-tuning script. Set variables to input paths. Look at examples/finetune_dldsc.sh for example data on cb2.
 
 ```bash
 python dldsc.py mode='Train' \
@@ -185,7 +185,7 @@ python dldsc.py mode='Train' \
 
 ### Inference
 
-Example D-LDSC inference script for heritability estimation. Set variables to input paths.
+Example D-LDSC inference script for heritability estimation. Set variables to input paths. Look at examples/inference_heritability.sh for example data on cb2.
 
 ```bash
 python dldsc.py mode='Inference' \
@@ -205,7 +205,7 @@ python dldsc.py mode='Inference' \
                 hydra.run.dir="${out_dir}/logs/\${now:%Y-%m-%d}/\${now:%H-%M-%S}"
 ```
 
-Example D-LDSC inference script for fine-mapping. Set variables to input paths.
+Example D-LDSC inference script for fine-mapping. Set variables to input paths. Look at examples/inference_finemapping.sh for example data on cb2.
 
 ```bash
 python dldsc.py mode='Inference' \
@@ -256,6 +256,7 @@ Examples to plot heritability enrichment for binary and continous annotations ar
 - Documentation for sweeps for hyperparamter tuning.
 - Co-localization examples and documentation. It works but needs more evaluations on our end.
 - Move trained models and some data to GCP buckets for easier sharing.
+- Add instructions for monitoring training with WANDB
 
 
 
